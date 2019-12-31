@@ -177,8 +177,8 @@ mem_init(void)
 	//    - the new image at UPAGES -- kernel R, user R
 	//      (ie. perm = PTE_U | PTE_P)
 	//    - pages itself -- kernel RW, user NONE
-	// Your code goes here:
-	//boot_map_region(kern_pgdir, UPAGES, n, PADDR(UPAGES), (PTE_U | PTE_P));
+	// Your code goes here:	
+	boot_map_region(kern_pgdir, UPAGES, PTSIZE, PADDR(pages), (PTE_U | PTE_P));
 
 	//////////////////////////////////////////////////////////////////////
 	// Use the physical memory that 'bootstack' refers to as the kernel
@@ -191,7 +191,7 @@ mem_init(void)
 	//       overwrite memory.  Known as a "guard page".
 	//     Permissions: kernel RW, user NONE
 	// Your code goes here:
-	//boot_map_region(kern_pgdir, KSTACKTOP-KSTKSIZE, KSTKSIZE, PADDR(bootstack), (PTE_W | PTE_P));
+	boot_map_region(kern_pgdir, KSTACKTOP-KSTKSIZE, KSTKSIZE, PADDR(bootstack), (PTE_W | PTE_P));
 
 	//////////////////////////////////////////////////////////////////////
 	// Map all of physical memory at KERNBASE.
@@ -201,7 +201,7 @@ mem_init(void)
 	// we just set up the mapping anyway.
 	// Permissions: kernel RW, user NONE
 	// Your code goes here:
-	//boot_map_region(kern_pgdir, KERNBASE, 0xffffffff-KERNBASE+1, 0, (PTE_W | PTE_P));
+	boot_map_region(kern_pgdir, KERNBASE, -KERNBASE, 0, (PTE_W | PTE_P));
 
 	// Check that the initial page directory has been set up correctly.
 	check_kern_pgdir();
@@ -329,6 +329,8 @@ page_alloc(int alloc_flags)
 		memset(page2kva(freePageInfo), '\0', PGSIZE);
 	}
 	
+	assert(freePageInfo->pp_ref == 0); // debug
+	
 	return freePageInfo;
 }
 
@@ -440,11 +442,14 @@ static void
 boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm)
 {	
 	// Before we call boot_map_region,we have to make sure that va and pa are both page-aligned.
-	uintptr_t end = va + size;
+	uint32_t pageNums = PGNUM(size), i;
 	pte_t *pageTableEntry;
-	for(;va < end; va += PGSIZE, pa += PGSIZE){
+	for(i = 0; i < pageNums; ++i){
 		pageTableEntry = pgdir_walk(pgdir, (void *)va, 1);
-		*pageTableEntry = pa | perm | PTE_P;	// Construct mappint.Don't forget modify the pte entry!
+		assert(pageTableEntry);
+		*pageTableEntry = pa | perm | PTE_P; // Construct mapping.Don't forget modify the pte entry!
+		va += PGSIZE;
+		pa += PGSIZE;
 	}
 }
 
@@ -739,8 +744,10 @@ check_kern_pgdir(void)
 
 
 	// check phys mem
-	for (i = 0; i < npages * PGSIZE; i += PGSIZE)
+	for (i = 0; i < npages * PGSIZE; i += PGSIZE){
+		//cprintf("i is %d and check value is %d\n",i, check_va2pa(pgdir, KERNBASE + i));
 		assert(check_va2pa(pgdir, KERNBASE + i) == i);
+	}
 
 	// check kernel stack
 	for (i = 0; i < KSTKSIZE; i += PGSIZE)
