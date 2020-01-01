@@ -178,6 +178,7 @@ mem_init(void)
 	//      (ie. perm = PTE_U | PTE_P)
 	//    - pages itself -- kernel RW, user NONE
 	// Your code goes here:	
+	//cprintf("debug-> PTSIZE:%d another:%d\n", PTSIZE, ROUNDUP(n, PGSIZE)); //debug
 	boot_map_region(kern_pgdir, UPAGES, PTSIZE, PADDR(pages), (PTE_U | PTE_P));
 
 	//////////////////////////////////////////////////////////////////////

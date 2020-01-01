@@ -5,11 +5,13 @@
 #include <inc/string.h>
 #include <inc/memlayout.h>
 #include <inc/assert.h>
+#include <inc/mmu.h>
 #include <inc/x86.h>
 
 #include <kern/console.h>
 #include <kern/monitor.h>
 #include <kern/kdebug.h>
+#include <kern/pmap.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 
@@ -24,10 +26,16 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
-	{ "mon_backtrace", "Display the stack frame", mon_backtrace },
+	{ "backtrace", "Display the stack frame", mon_backtrace },
+	{ "showMappings", "Display the mapping info.", show_mappings},
 };
 
 /***** Implementations of basic kernel monitor commands *****/
+void setPermissions(int32_t perm, pte_t *pte);
+int32_t s2va(const char* string);
+static inline int32_t char2int32(char c);
+static inline uint32_t lovelyValidate(uint32_t u);
+
 
 int
 mon_help(int argc, char **argv, struct Trapframe *tf)
@@ -74,7 +82,93 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 	return count;
 }
 
+int
+show_mappings(int argc, char **argv, struct Trapframe *tf){
+	// validate arguments amount
+	// argc==3,which means that show pages information between argv[1] and argv[2].
+	// argc==4,which means that set all the pages with perm.
+	// argc==5,which means that only set page argv[4] with perm.
+	// cprintf("debug-> argc :%d\n",argc);
+	if(argc < 3){
+		cprintf("Invalid arguments.You should pass two virtual address:startVA endVA and optional permissions.\n");
+		return 0;
+	}
 
+	int32_t start = s2va(argv[1]), end = s2va(argv[2]) + 1, perm = 0, onlyTarget = 0;
+	if(start == -1 || end == -1 || end < start){
+		cprintf("Invalid virual address was given.\n");
+		return 0;
+	}
+
+	// obtain optional perm.
+	if(argc >= 4){
+		char *tmp = argv[3];
+		if(tmp[0] == '-')perm = -1;
+		else{
+			while(*tmp){
+				perm = perm * 10 + (*tmp - '0');
+				++tmp;	
+			}	
+		}
+	}
+	// obtain onlyTarget while argc==4
+	if(argc == 5){
+		onlyTarget = s2va(argv[4]);
+	}
+	
+	uintptr_t u_start_align = ROUNDDOWN((uintptr_t)start, PGSIZE), u_end_align = ROUNDUP((uintptr_t)end, PGSIZE);
+	pte_t *pte;
+	cprintf("va@start: %08x va@end: %08x\n", u_start_align, u_end_align);
+	for(;u_start_align < u_end_align; u_start_align += PGSIZE){
+		pte = pgdir_walk(kern_pgdir, (void *)u_start_align, 1);
+		if(pte){
+			if(argc == 4)setPermissions(perm, pte);
+			if(argc == 5 && (uintptr_t)onlyTarget == u_start_align)setPermissions(perm, pte);
+			cprintf("va@page: %08x ", u_start_align);
+			cprintf("pa@page: %08x @perm:PTE_P %d PTE_U %d PTE_W %d;\n", PTE_ADDR(*pte),lovelyValidate(*pte & PTE_P), lovelyValidate(*pte & PTE_U), lovelyValidate(*pte & PTE_W));
+		}
+	}
+	
+	return 0;
+}
+
+/***** Utils for basic kernel monitor commands *****/
+void setPermissions(int32_t perm, pte_t *pte){
+	if(perm < 0){
+		// clear all permissions.
+		*pte &= ~0xfff;
+	}else{
+		*pte |= (perm & 0xfff);	
+	}
+}
+
+int32_t s2va(const char* string){
+	// convert a string passed by show_mappings to virtual address.
+	int32_t len, va = -1, i, charValue;
+	for(i = 0;string[i]; ++i){
+		if(i < 2)continue;
+		if(i == 2)va = 0;
+		if((charValue = char2int32(string[i])) < 0)return -1; // invalid character.
+		va = va * 16 + charValue;
+	}
+	return va;
+}
+
+static inline int32_t char2int32(char c){
+	// validate a character and convert it to corresponding value.
+	if(c >= '0' && c <= '9'){
+		return c - '0';
+	}else if(c >= 'a' && c <= 'f'){
+		return c - 'a' + 10;
+	}else if(c >= 'A' && c <= 'F'){
+		return 	c - 'A' + 10;
+	}
+	return -1;
+}
+
+static inline uint32_t lovelyValidate(uint32_t u){
+	return u > 0?1:0;
+}
 
 /***** Kernel monitor command interpreter *****/
 
