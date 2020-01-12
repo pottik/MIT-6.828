@@ -11,6 +11,7 @@
 #include <kern/console.h>
 #include <kern/monitor.h>
 #include <kern/kdebug.h>
+#include <kern/trap.h>
 #include <kern/pmap.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
@@ -107,15 +108,15 @@ show_mappings(int argc, char **argv, struct Trapframe *tf){
 		else{
 			while(*tmp){
 				perm = perm * 10 + (*tmp - '0');
-				++tmp;	
-			}	
+				++tmp;
+			}
 		}
 	}
 	// obtain onlyTarget while argc==4
 	if(argc == 5){
 		onlyTarget = s2va(argv[4]);
 	}
-	
+
 	uintptr_t u_start_align = ROUNDDOWN((uintptr_t)start, PGSIZE), u_end_align = ROUNDUP((uintptr_t)end, PGSIZE);
 	pte_t *pte;
 	cprintf("va@start: %08x va@end: %08x\n", u_start_align, u_end_align);
@@ -128,7 +129,7 @@ show_mappings(int argc, char **argv, struct Trapframe *tf){
 			cprintf("pa@page: %08x @perm:PTE_P %d PTE_U %d PTE_W %d;\n", PTE_ADDR(*pte),lovelyValidate(*pte & PTE_P), lovelyValidate(*pte & PTE_U), lovelyValidate(*pte & PTE_W));
 		}
 	}
-	
+
 	return 0;
 }
 
@@ -138,7 +139,7 @@ void setPermissions(int32_t perm, pte_t *pte){
 		// clear all permissions.
 		*pte &= ~0xfff;
 	}else{
-		*pte |= (perm & 0xfff);	
+		*pte |= (perm & 0xfff);
 	}
 }
 
@@ -222,6 +223,8 @@ monitor(struct Trapframe *tf)
 	cprintf("Welcome to the JOS kernel monitor!\n");
 	cprintf("Type 'help' for a list of commands.\n");
 
+	if (tf != NULL)
+		print_trapframe(tf);
 
 	while (1) {
 		buf = readline("K> ");
