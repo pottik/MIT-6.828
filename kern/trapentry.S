@@ -44,12 +44,53 @@
 .text
 
 /*
- * Lab 3: Your code here for generating entry points for the different traps.
+ * generating entry points for the different traps.
  */
+// Exceptions without error code.
+TRAPHANDLER_NOEC(divideErrorHandler, T_DIVIDE);
+TRAPHANDLER_NOEC(debugHandler, T_DEBUG);
+TRAPHANDLER_NOEC(NMIHandler, T_NMI);
+TRAPHANDLER_NOEC(breakpointHandler, T_BRKPT);
+TRAPHANDLER_NOEC(overflowHandler, T_OFLOW);
+TRAPHANDLER_NOEC(BOUNDRangeExceededHandler, T_BOUND);
+TRAPHANDLER_NOEC(invalidOpcodeHandler, T_ILLOP);
+TRAPHANDLER_NOEC(deviceNotAvailableHandler, T_DEVICE);
 
+
+// Exceptions with error code.You can find this information in chapter 9.10 of 80386 programmer's references mannual.
+TRAPHANDLER(doubleFaultHandler, T_DBLFLT);
+// TRAPHANDLER_NOEC(coprocessorSegmentOverrunHandler, T_COPROC); reserved,just ignore.
+TRAPHANDLER(invalidTSSHandler, T_TSS);
+TRAPHANDLER(segmentNotPresentHandler, T_SEGNP);
+TRAPHANDLER(stackFaultHandler, T_STACK);
+TRAPHANDLER(generalProtectionHandler, T_GPFLT);
+TRAPHANDLER(pageFaultHandler, T_PGFLT);
+
+// Exceptions without error code.
+TRAPHANDLER_NOEC(floatingPointErrorHandler, T_FPERR);
+TRAPHANDLER_NOEC(alignmentCheckHandler, T_ALIGN);
+TRAPHANDLER_NOEC(machineCheckHandler, T_MCHK);
+TRAPHANDLER_NOEC(SIMDFloatingPointExceptionHandler, T_SIMDERR);
 
 
 /*
  * Lab 3: Your code here for _alltraps
+ * Key point from lab reference:
+ * 	1. push values to make the stack look like a struct Trapframe;
+ * 	2. load GD_KD into %ds and %es;
+ * 	3. pushl %esp to pass a pointer to the Trapframe as an argument to trap();
+ * 	4. call trap (can trap ever return?);
+ * According to inc/trap.h and the macro TRAPHANDLER,we can know that we should push %ds and %es register after
+ * the tf_trapno.
  */
+.global _alltraps
+_alltraps:
+	pushl %ds
+	pushl %es
+	pushal
+	movw $GD_KD, %ax
+	movw %ax, %ds
+	movw %ax, %es
+	pushl %esp
+	call trap
 

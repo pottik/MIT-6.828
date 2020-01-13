@@ -65,6 +65,45 @@ trap_init(void)
 	extern struct Segdesc gdt[];
 
 	// LAB 3: Your code here.
+	// Generate corresponding exception handler function's signature.
+	void divideErrorHandler();
+	void debugHandler();
+	void NMIHandler();
+	void breakpointHandler();
+	void overflowHandler();
+	void BOUNDRangeExceededHandler();
+	void invalidOpcodeHandler();
+	void deviceNotAvailableHandler();
+	void doubleFaultHandler();
+	void invalidTSSHandler();
+	void segmentNotPresentHandler();
+	void stackFaultHandler();
+	void generalProtectionHandler();
+	void pageFaultHandler();
+	void floatingPointErrorHandler();
+	void alignmentCheckHandler();
+	void machineCheckHandler();
+	void SIMDFloatingPointExceptionHandler();
+
+	// set IDT with macro SETGATE in inc/mmu.h
+	SETGATE(idt[T_DIVIDE], 0, GD_KT, divideErrorHandler, 0);
+	SETGATE(idt[T_DEBUG], 0, GD_KT, debugHandler, 0);
+	SETGATE(idt[T_NMI], 0, GD_KT, NMIHandler, 0);
+	SETGATE(idt[T_BRKPT], 0, GD_KT, breakpointHandler, 0);
+	SETGATE(idt[T_OFLOW], 0, GD_KT, overflowHandler, 0);
+	SETGATE(idt[T_BOUND], 0, GD_KT, BOUNDRangeExceededHandler, 0);
+	SETGATE(idt[T_ILLOP], 0, GD_KT, invalidOpcodeHandler, 0);
+	SETGATE(idt[T_DEVICE], 0, GD_KT, deviceNotAvailableHandler, 0);
+	SETGATE(idt[T_DBLFLT], 0, GD_KT, doubleFaultHandler, 0);
+	SETGATE(idt[T_TSS], 0, GD_KT, invalidTSSHandler, 0);
+	SETGATE(idt[T_SEGNP], 0, GD_KT, segmentNotPresentHandler, 0);
+	SETGATE(idt[T_STACK], 0, GD_KT, stackFaultHandler, 0);
+	SETGATE(idt[T_GPFLT], 0, GD_KT, generalProtectionHandler, 0);
+	SETGATE(idt[T_PGFLT], 0, GD_KT, pageFaultHandler, 0);
+	SETGATE(idt[T_FPERR], 0, GD_KT, floatingPointErrorHandler, 0);
+	SETGATE(idt[T_ALIGN], 0, GD_KT, alignmentCheckHandler, 0);
+	SETGATE(idt[T_MCHK], 0, GD_KT, machineCheckHandler, 0);
+	SETGATE(idt[T_SIMDERR], 0, GD_KT, SIMDFloatingPointExceptionHandler, 0);
 
 	// Per-CPU setup 
 	trap_init_percpu();

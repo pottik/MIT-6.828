@@ -106,7 +106,7 @@ boot_alloc(uint32_t n)
 	result = nextfree;
 	nextfree = ROUNDUP(nextfree + n, PGSIZE);
 	if((uintptr_t)nextfree > KERNBASE + npages * PGSIZE){
-		panic("kern/pmap.c", 107, "boot_alloc out of memory with n=%d", n);
+		panic("boot_alloc out of memory with n=%d", n);
 	}
 	return result;
 }
@@ -360,11 +360,11 @@ page_free(struct PageInfo *pp)
 	// Fill this function in
 	// Hint: You may want to panic if pp->pp_ref is nonzero or
 	// pp->pp_link is not NULL.
-	if(!pp)warn("kern/pmap.c", 343, "Trying to free page but passing a null pointer.");
+	if(!pp)warn("Trying to free page but passing a null pointer.");
 	else{
 		// pp is not a null pointer.
 		if(pp->pp_ref != 0 || pp->pp_link){
-			panic("kern/pmap.c", 346, "Free page failed!pp->pp_ref is nonzero or pp->link is not null!");
+			panic("Free page failed!pp->pp_ref is nonzero or pp->link is not null!");
 		}else{
 			pp->pp_link = page_free_list;
 			page_free_list = pp;
