@@ -29,6 +29,14 @@ static struct Command commands[] = {
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
 	{ "backtrace", "Display the stack frame", mon_backtrace },
 	{ "showMappings", "Display the mapping info.", show_mappings},
+	{ "debug", "Enter debug mdoe.", mon_intoDebugMode},
+};
+
+// commands_debug used for chanllenge of lab3.
+static struct Command commands_debug[] = {
+	{ "si", "Step instruction.", debug_stepi},
+	{ "quit", "Quit debug mode.", debug_quit},
+	{ "c", "Continue.", debug_continue},
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -36,7 +44,7 @@ void setPermissions(int32_t perm, pte_t *pte);
 int32_t s2va(const char* string);
 static inline int32_t char2int32(char c);
 static inline uint32_t lovelyValidate(uint32_t u);
-
+static int runcmd(char *buf, struct Trapframe *tf, int debug);
 
 int
 mon_help(int argc, char **argv, struct Trapframe *tf)
@@ -70,17 +78,15 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 	// Your code here.
 	struct Eipdebuginfo eipInfo;
 	uintptr_t ebp = read_ebp(),*t;
-	int count = 0;
 	while(ebp != 0){
 		t = (uintptr_t*)ebp;
 		if(debuginfo_eip((uintptr_t)t[1],&eipInfo) >= 0){
 			cprintf("ebp %x eip %x args %08x %08x %08x %08x %08x\n", ebp, t[1],t[2],t[3],t[4],t[5],t[6]);
 			cprintf("\t%s:%d: %.*s+%d\n",eipInfo.eip_file,eipInfo.eip_line,eipInfo.eip_fn_namelen,eipInfo.eip_fn_name,eipInfo.eip_fn_addr);
-			++count;
 		}
 		ebp=t[0];
 	}
-	return count;
+	return 0;
 }
 
 int
@@ -133,6 +139,46 @@ show_mappings(int argc, char **argv, struct Trapframe *tf){
 	return 0;
 }
 
+int
+mon_intoDebugMode(int argc, char **argv, struct Trapframe *tf){
+	// This function will only be invoked once.Because next
+	char *buf;
+	//cprintf("into debug mode."); // debug
+	while(1){
+		cprintf("=>0x%08x\n", tf->tf_eip);
+		buf = readline("(debug)");
+		if(buf != NULL){
+			if(runcmd(buf, tf, 1) < 0)break;
+		}
+	}
+	return -1;
+}
+
+int
+debug_stepi(int argc, char** argv, struct Trapframe *tf){
+	// This function service for trap.c at the time when the kernel encounter Debug or Breakpoint exceptions.
+	// Just a simple stpei function.
+	if(tf->tf_trapno == T_BRKPT || tf->tf_trapno == T_DEBUG){
+		tf->tf_eflags |= FL_TF; // Set EFLAGS register with Trap flag which is a control flag.
+	}else{
+		cprintf("You can only use stepi when the processor encounter Debug or Breakpoint exceptions.\n");
+	}
+	return -1; // must return -1 because we should leave monitor and let user program proceed.
+}
+
+int
+debug_continue(int argc, char **argv, struct Trapframe *tf){
+	if(tf->tf_trapno == T_BRKPT || tf->tf_trapno == T_DEBUG){
+		tf->tf_eflags &= ~FL_TF;
+	}
+	return -1;
+}
+
+int
+debug_quit(int argc, char **argv, struct Trapframe *tf){
+	return -1;
+}
+
 /***** Utils for basic kernel monitor commands *****/
 void setPermissions(int32_t perm, pte_t *pte){
 	if(perm < 0){
@@ -177,11 +223,12 @@ static inline uint32_t lovelyValidate(uint32_t u){
 #define MAXARGS 16
 
 static int
-runcmd(char *buf, struct Trapframe *tf)
+runcmd(char *buf, struct Trapframe *tf, int debug)
 {
 	int argc;
 	char *argv[MAXARGS];
-	int i;
+	int i, endi;
+	struct Command *theCommands;
 
 	// Parse the command buffer into whitespace-separated arguments
 	argc = 0;
@@ -207,9 +254,19 @@ runcmd(char *buf, struct Trapframe *tf)
 	// Lookup and invoke the command
 	if (argc == 0)
 		return 0;
-	for (i = 0; i < ARRAY_SIZE(commands); i++) {
-		if (strcmp(argv[0], commands[i].name) == 0)
-			return commands[i].func(argc, argv, tf);
+	// determine which commands to use.
+	if(debug){
+		endi = ARRAY_SIZE(commands_debug);
+		theCommands = commands_debug;
+	}else{
+		endi = ARRAY_SIZE(commands);
+		theCommands = commands;
+	}
+
+	for (i = 0; i < endi; i++) {
+		if (strcmp(argv[0], theCommands[i].name) == 0){
+			return theCommands[i].func(argc, argv, tf);
+		}
 	}
 	cprintf("Unknown command '%s'\n", argv[0]);
 	return 0;
@@ -229,7 +286,21 @@ monitor(struct Trapframe *tf)
 	while (1) {
 		buf = readline("K> ");
 		if (buf != NULL)
-			if (runcmd(buf, tf) < 0)
+			if (runcmd(buf, tf, 0) < 0)
 				break;
 	}
 }
+
+void
+monitor_debug(struct Trapframe *tf){
+	char *buf;
+	// cprintf("now you got Debug signal."); // debug
+	while(1){
+		cprintf("=>0x%08x\n", tf->tf_eip);
+		buf = readline("(debug)");
+		if(buf != NULL){
+			if(runcmd(buf, tf, 1) < 0)break;
+		}
+	}
+}
+

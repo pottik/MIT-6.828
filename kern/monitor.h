@@ -10,11 +10,16 @@ struct Trapframe;
 // optionally providing a trap frame indicating the current state
 // (NULL if none).
 void monitor(struct Trapframe *tf);
+void monitor_debug(struct Trapframe *tf);
 
 // Functions implementing monitor commands.
 int mon_help(int argc, char **argv, struct Trapframe *tf);
 int mon_kerninfo(int argc, char **argv, struct Trapframe *tf);
 int mon_backtrace(int argc, char **argv, struct Trapframe *tf);
 int show_mappings(int argc, char **argv, struct Trapframe *tf);
+int mon_intoDebugMode(int argc, char **argv, struct Trapframe *tf);d
+int debug_stepi(int argc, char **argv, struct Trapframe *tf);
+int debug_quit(int argc, char **argv, struct Trapframe *tf);
+int debug_continue(int argc, char **argv, struct Trapframe *tf);
 
 #endif	// !JOS_KERN_MONITOR_H

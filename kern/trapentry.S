@@ -41,11 +41,67 @@
 	pushl $(num);							\
 	jmp _alltraps
 
+/*
+ * My own macro for exercise 4's chanllenge of lab3.
+ */
+#define TRAPHANDLER_MINE(name, num)                                     \
+.data;                                                                  \
+	.long name;             /* entry point's symbol */              \
+.text;                                                                  \
+	.global name;		/* define global symbol for 'name' */   \
+	.type name, @function;  /* symbol type is function */           \
+	.align 2;               /* align function definition */         \
+name:                           /* function starts here */              \
+	pushl $(num);                                                   \
+	jmp _alltraps
+
+#define TRAPHANDLER_NOEC_MINE(name, num)                                \
+.data;                                                                  \
+	.long name;                                                     \
+.text;                                                                  \
+	.global name;		/* define global symbol for 'name' */   \
+	.type name, @function;  /* symbol type is function */           \
+	.align 2;               /* align function definition */         \
+name:                           /* function starts here */              \
+	pushl $0;                                                       \
+	pushl $(num);                                                   \
+	jmp _alltraps
+
+.data
+	.global entryPointOfTraps
+	entryPointOfTraps:
 .text
+// Exceptions without error code.
+TRAPHANDLER_NOEC_MINE(divideErrorHandler, T_DIVIDE);
+TRAPHANDLER_NOEC_MINE(debugHandler, T_DEBUG);
+TRAPHANDLER_NOEC_MINE(NMIHandler, T_NMI);
+TRAPHANDLER_NOEC_MINE(breakpointHandler, T_BRKPT);
+TRAPHANDLER_NOEC_MINE(overflowHandler, T_OFLOW);
+TRAPHANDLER_NOEC_MINE(BOUNDRangeExceededHandler, T_BOUND);
+TRAPHANDLER_NOEC_MINE(invalidOpcodeHandler, T_ILLOP);
+TRAPHANDLER_NOEC_MINE(deviceNotAvailableHandler, T_DEVICE);
+TRAPHANDLER_MINE(doubleFaultHandler, T_DBLFLT);
+TRAPHANDLER_NOEC_MINE(coprocessorSegmentOverrunHandler, T_COPROC);// Just padding.
+TRAPHANDLER_MINE(invalidTSSHandler, T_TSS);
+TRAPHANDLER_MINE(segmentNotPresentHandler, T_SEGNP);
+TRAPHANDLER_MINE(stackFaultHandler, T_STACK);
+TRAPHANDLER_MINE(generalProtectionHandler, T_GPFLT);
+TRAPHANDLER_MINE(pageFaultHandler, T_PGFLT);
+TRAPHANDLER_MINE(reserved, T_RES); // Just padding.
+TRAPHANDLER_NOEC_MINE(floatingPointErrorHandler, T_FPERR);
+TRAPHANDLER_NOEC_MINE(alignmentCheckHandler, T_ALIGN);
+TRAPHANDLER_NOEC_MINE(machineCheckHandler, T_MCHK);
+TRAPHANDLER_NOEC_MINE(SIMDFloatingPointExceptionHandler, T_SIMDERR);
+TRAPHANDLER_NOEC_MINE(syscallHandler, T_SYSCALL);
+
+
+/*
+ * Origin code passing the test case for lab3:exercise 4
+ */
 
 /*
  * generating entry points for the different traps.
- */
+ *
 // Exceptions without error code.
 TRAPHANDLER_NOEC(divideErrorHandler, T_DIVIDE);
 TRAPHANDLER_NOEC(debugHandler, T_DEBUG);
@@ -71,7 +127,8 @@ TRAPHANDLER_NOEC(floatingPointErrorHandler, T_FPERR);
 TRAPHANDLER_NOEC(alignmentCheckHandler, T_ALIGN);
 TRAPHANDLER_NOEC(machineCheckHandler, T_MCHK);
 TRAPHANDLER_NOEC(SIMDFloatingPointExceptionHandler, T_SIMDERR);
-
+ *
+ */
 
 /*
  * Lab 3: Your code here for _alltraps
@@ -81,7 +138,7 @@ TRAPHANDLER_NOEC(SIMDFloatingPointExceptionHandler, T_SIMDERR);
  * 	3. pushl %esp to pass a pointer to the Trapframe as an argument to trap();
  * 	4. call trap (can trap ever return?);
  * According to inc/trap.h and the macro TRAPHANDLER,we can know that we should push %ds and %es register after
- * the tf_trapno.
+ * the tf_trapno because the tf_trapno was pushed onto stack by x86 hardware.
  */
 .global _alltraps
 _alltraps:

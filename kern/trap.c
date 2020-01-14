@@ -63,8 +63,21 @@ void
 trap_init(void)
 {
 	extern struct Segdesc gdt[];
+	/*
+	 * Code for exercise 4's challenge of lab3.
+	 */
+	extern void(*entryPointOfTraps[])();
+	int32_t i;
+	for(i = 0; i < 20; ++i){
+		if(i == T_BRKPT){
+			SETGATE(idt[i], 0, GD_KT, entryPointOfTraps[i], 3);
+		}else SETGATE(idt[i], 0, GD_KT, entryPointOfTraps[i], 0);
+	}
+	// set syscall gate
+	SETGATE(idt[T_SYSCALL], 0, GD_KT, entryPointOfTraps[i], 3); // syscall entry was in index 20.
 
-	// LAB 3: Your code here.
+	/*
+	 * Origin code passing the test case for exercise 4 of lab3.
 	// Generate corresponding exception handler function's signature.
 	void divideErrorHandler();
 	void debugHandler();
@@ -104,6 +117,8 @@ trap_init(void)
 	SETGATE(idt[T_ALIGN], 0, GD_KT, alignmentCheckHandler, 0);
 	SETGATE(idt[T_MCHK], 0, GD_KT, machineCheckHandler, 0);
 	SETGATE(idt[T_SIMDERR], 0, GD_KT, SIMDFloatingPointExceptionHandler, 0);
+	 *
+	 */
 
 	// Per-CPU setup 
 	trap_init_percpu();
@@ -183,6 +198,16 @@ trap_dispatch(struct Trapframe *tf)
 {
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
+	switch(tf->tf_trapno){
+		case T_PGFLT:page_fault_handler(tf);return;
+		case T_BRKPT:monitor(tf);return;
+		case T_DEBUG:monitor_debug(tf);return;
+		case T_SYSCALL:{
+			tf->tf_regs.reg_eax = syscall(tf->tf_regs.reg_eax, tf->tf_regs.reg_edx, tf->tf_regs.reg_ecx, tf->tf_regs.reg_ebx, tf->tf_regs.reg_edi, tf->tf_regs.reg_esi);
+			return;
+		}
+		default:break;
+	}
 
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
