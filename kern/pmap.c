@@ -617,6 +617,21 @@ int
 user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 {
 	// LAB 3: Your code here.
+	uintptr_t startVa = ROUNDDOWN((uintptr_t)va, PGSIZE), endVa = ROUNDUP((uintptr_t)(va + len), PGSIZE);
+	pte_t *pte;
+	struct PageInfo *pageInfo;
+	uint32_t permissions = perm | PTE_P;
+
+	for(; startVa < endVa; startVa += PGSIZE){
+		pageInfo = page_lookup(env->env_pgdir, (void *)startVa, &pte);
+		if(!pageInfo || startVa > (uintptr_t)ULIM || ((*pte) & permissions) != permissions){
+			// if there is an error,set the 'user_mem_check_addr' variable to the first erroneous virtual address.
+			// :( well,sorry I can't really understand the meaning of "first erroneous virtual address."
+			// Holy shit,this takes me really a lot of time to fix this bug to pass the whole test cases.
+			user_mem_check_addr = (startVa < (uintptr_t)va?(uintptr_t)va:startVa);
+			return -E_FAULT;
+		}
+	}
 
 	return 0;
 }
