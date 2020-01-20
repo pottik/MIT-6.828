@@ -47,7 +47,7 @@
  */
 #define TRAPHANDLER_MINE(name, num)                                     \
 .data;                                                                  \
-	.long name;             /* entry point's symbol */              \
+	.long name, num;             /* entry point's symbol */              \
 .text;                                                                  \
 	.global name;		/* define global symbol for 'name' */   \
 	.type name, @function;  /* symbol type is function */           \
@@ -58,7 +58,7 @@ name:                           /* function starts here */              \
 
 #define TRAPHANDLER_NOEC_MINE(name, num)                                \
 .data;                                                                  \
-	.long name;                                                     \
+	.long name, num;                                                     \
 .text;                                                                  \
 	.global name;		/* define global symbol for 'name' */   \
 	.type name, @function;  /* symbol type is function */           \
@@ -72,7 +72,7 @@ name:                           /* function starts here */              \
 	.global entryPointOfTraps
 	entryPointOfTraps:
 .text
-// Exceptions without error code.
+// Exceptions without error code.Now the length is 0-28
 TRAPHANDLER_NOEC_MINE(divideErrorHandler, T_DIVIDE);
 TRAPHANDLER_NOEC_MINE(debugHandler, T_DEBUG);
 TRAPHANDLER_NOEC_MINE(NMIHandler, T_NMI);
@@ -95,6 +95,26 @@ TRAPHANDLER_NOEC_MINE(machineCheckHandler, T_MCHK);
 TRAPHANDLER_NOEC_MINE(SIMDFloatingPointExceptionHandler, T_SIMDERR);
 TRAPHANDLER_NOEC_MINE(syscallHandler, T_SYSCALL);
 
+TRAPHANDLER_NOEC_MINE(IRQ_timerHandler, IRQ_OFFSET + IRQ_TIMER);
+TRAPHANDLER_NOEC_MINE(IRQ_kbdHandler, IRQ_OFFSET + IRQ_KBD);
+TRAPHANDLER_NOEC_MINE(IRQ_2_Handler, IRQ_OFFSET + 2);
+TRAPHANDLER_NOEC_MINE(IRQ_3_Handler, IRQ_OFFSET + 3);
+TRAPHANDLER_NOEC_MINE(IRQ_serialHandler, IRQ_OFFSET + IRQ_SERIAL);
+TRAPHANDLER_NOEC_MINE(IRQ_5_Handler, IRQ_OFFSET + 5);
+TRAPHANDLER_NOEC_MINE(IRQ_6_Handler, IRQ_OFFSET + 6);
+TRAPHANDLER_NOEC_MINE(IRQ_spuriousHandler, IRQ_OFFSET + IRQ_SPURIOUS);
+TRAPHANDLER_NOEC_MINE(IRQ_8_Handler, IRQ_OFFSET + 8);
+TRAPHANDLER_NOEC_MINE(IRQ_9_Handler, IRQ_OFFSET + 9);
+TRAPHANDLER_NOEC_MINE(IRQ_10_Handler, IRQ_OFFSET + 10);
+TRAPHANDLER_NOEC_MINE(IRQ_11_Handler, IRQ_OFFSET + 11);
+TRAPHANDLER_NOEC_MINE(IRQ_12_Handler, IRQ_OFFSET + 12);
+TRAPHANDLER_NOEC_MINE(IRQ_13_Handler, IRQ_OFFSET + 13);
+TRAPHANDLER_NOEC_MINE(IRQ_ideHandler, IRQ_OFFSET + IRQ_IDE);
+TRAPHANDLER_NOEC_MINE(IRQ_15_Handler, IRQ_OFFSET + 15);
+TRAPHANDLER_NOEC_MINE(IRQ_16_Handler, IRQ_OFFSET + 16);
+TRAPHANDLER_NOEC_MINE(IRQ_17_Handler, IRQ_OFFSET + 17);
+TRAPHANDLER_NOEC_MINE(IRQ_18_Handler, IRQ_OFFSET + 18);
+TRAPHANDLER_NOEC_MINE(IRQ_errorHandler, IRQ_OFFSET + IRQ_ERROR);
 
 /*
  * Origin code passing the test case for lab3:exercise 4

@@ -33,8 +33,25 @@ pgfault(struct UTrapframe *utf)
 	//   You should make three system calls.
 
 	// LAB 4: Your code here.
-
-	panic("pgfault not implemented");
+	if(!((err & FEC_WR) && (uvpt[PGNUM(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_COW))){
+		panic("Permission denied!");
+	}
+	// if not align,sys_page_alloc will return error code.
+	void *addr_align = ROUNDDOWN(addr, PGSIZE);
+	// Allocate a page and map it at PFTEMP.
+	if((r = sys_page_alloc(0, PFTEMP, (PTE_W | PTE_P | PTE_U))) < 0){
+		panic("sys_page_alloc:%e", r);
+	}
+	// Copy the data from the old page to the new page.
+	memcpy(PFTEMP, addr_align, PGSIZE);
+	// Then the fault handler map the new page at the appropriate address.
+	if((r = sys_page_map(0, (void *)PFTEMP, 0, addr_align, (PTE_W | PTE_P | PTE_U))) < 0){
+		panic("sys_page_map:%e", r);
+	}
+	// Finally,we should unmap the old maps.
+	if((r = sys_page_unmap(0, (void *)PFTEMP)) < 0){
+		panic("sys_page_unmap:%e", r);
+	}
 }
 
 //
@@ -53,8 +70,15 @@ duppage(envid_t envid, unsigned pn)
 {
 	int r;
 
-	// LAB 4: Your code here.
-	panic("duppage not implemented");
+	uintptr_t pn_va = pn * PGSIZE;
+	if((uvpt[pn] & PTE_W) || (uvpt[pn] & PTE_COW)){
+		if((r = sys_page_map(0, (void *)pn_va, envid, (void *)pn_va, (PTE_COW | PTE_P | PTE_U))) < 0){
+			panic("sys_page_map:%e", r);
+		}
+		if((r = sys_page_map(0, (void *)pn_va, 0, (void *)pn_va, (PTE_COW | PTE_P | PTE_U))) < 0){
+			panic("sys_page_map:%e", r);
+		}
+	}
 	return 0;
 }
 
@@ -77,8 +101,44 @@ duppage(envid_t envid, unsigned pn)
 envid_t
 fork(void)
 {
-	// LAB 4: Your code here.
-	panic("fork not implemented");
+	envid_t envid;
+	uintptr_t pageVa;
+	unsigned pn;
+	set_pgfault_handler(pgfault);
+	if((envid = sys_exofork()) > 0){
+		// parent environment.
+		// Copy parent address space.
+		for(pageVa = UTEXT; pageVa < USTACKTOP; pageVa += PGSIZE){
+			// check permissions.
+			pn = PGNUM(pageVa);
+			if((uvpd[PDX(pageVa)] & PTE_P) && (uvpt[pn] & PTE_P) && (uvpt[pn] & PTE_U)){
+				duppage(envid, pn);
+			}
+		}
+		// Allocate a new page for the child's user exception stack.
+		int32_t flag;
+		if((flag = sys_page_alloc(envid, (void *)(UXSTACKTOP - PGSIZE), (PTE_P | PTE_U | PTE_W))) < 0){
+			panic("sys_page_alloc:%e", flag);
+		}
+		// Copy parent page fault handler setup to the child.
+		extern void _pgfault_upcall(void);
+		if((flag = sys_env_set_pgfault_upcall(envid, _pgfault_upcall)) < 0){
+			panic("sys_set_pgfault_upcall:%e", flag);
+		}
+		// Now we can mark the child environment as runnable.
+		if((flag = sys_env_set_status(envid, ENV_RUNNABLE)) < 0){
+			panic("sys_env_set_status:%e", flag);
+		}
+		return envid;
+	}else if(envid == 0){
+		// Modify "thisenv" in child environment.
+		// cprintf("debug sys_getenvid value is:%d\n",ENVX(sys_getenvid()));
+		thisenv = &envs[ENVX(sys_getenvid())];
+		return 0;
+	}else{
+		// sys_exofork() fail.
+		panic("sys_exofork:%e", envid);
+	}
 }
 
 // Challenge!

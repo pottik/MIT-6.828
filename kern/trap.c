@@ -73,15 +73,15 @@ trap_init(void)
 	/*
 	 * Code for exercise 4's challenge of lab3.
 	 */
-	extern void(*entryPointOfTraps[])();
+	extern long entryPointOfTraps[][2];
 	int32_t i;
-	for(i = 0; i < 20; ++i){
-		if(i == T_BRKPT){
-			SETGATE(idt[i], 0, GD_KT, entryPointOfTraps[i], 3);
-		}else SETGATE(idt[i], 0, GD_KT, entryPointOfTraps[i], 0);
+	for(i = 0; i <= 40; ++i){
+		if(entryPointOfTraps[i][1] == T_BRKPT || entryPointOfTraps[i][1] == T_SYSCALL){
+			SETGATE(idt[entryPointOfTraps[i][1]], 0, GD_KT, entryPointOfTraps[i][0], 3);
+		}else SETGATE(idt[entryPointOfTraps[i][1]], 0, GD_KT, entryPointOfTraps[i][0], 0);
 	}
 	// set syscall gate
-	SETGATE(idt[T_SYSCALL], 0, GD_KT, entryPointOfTraps[i], 3); // syscall entry was in index 20.
+	//SETGATE(idt[T_SYSCALL], 0, GD_KT, entryPointOfTraps[i], 3); // syscall entry was in index 20.
 
 	/*
 	 * Origin code passing the test case for exercise 4 of lab3.
@@ -162,7 +162,7 @@ trap_init_percpu(void)
 	// Setup a TSS so that we get the right stack when we trap to kernel.
 	thiscpu->cpu_ts.ts_esp0 = KSTACKTOP - thiscpu->cpu_id * (KSTKSIZE + KSTKGAP);
 	thiscpu->cpu_ts.ts_ss0 = GD_KD;
-	thiscpu->cpu_ts.ts_iomb = sizeof(struct Taskstate);
+	// thiscpu->cpu_ts.ts_iomb = sizeof(struct Taskstate);
 
 	// Initialize the TSS slot of the gdt.
 	gdt[(GD_TSS0 >> 3) + thiscpu->cpu_id] = SEG16(STS_T32A, (uint32_t)(&(thiscpu->cpu_ts)), sizeof(struct Taskstate) - 1, 0);
@@ -170,7 +170,7 @@ trap_init_percpu(void)
 
 	// Load the TSS selector (like other segment selectors, the
 	// bottom three bits are special; we leave them 0)
-	ltr((((GD_TSS0)>>3) + thiscpu->cpu_id)<<3); // low 3 bits was special.
+	ltr(GD_TSS0 + 8 * thiscpu->cpu_id); // low 3 bits was special.
 
 	// Load the IDT
 	lidt(&idt_pd);
@@ -250,6 +250,10 @@ trap_dispatch(struct Trapframe *tf)
 	// Handle clock interrupts. Don't forget to acknowledge the
 	// interrupt using lapic_eoi() before calling the scheduler!
 	// LAB 4: Your code here.
+	if(tf->tf_trapno == (IRQ_OFFSET + IRQ_TIMER)){
+		lapic_eoi();
+		sched_yield();
+	}
 
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
