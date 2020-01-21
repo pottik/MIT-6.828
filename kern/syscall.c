@@ -288,8 +288,43 @@ sys_page_unmap(envid_t envid, void *va)
 static int
 sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 {
-	// LAB 4: Your code here.
-	panic("sys_ipc_try_send not implemented");
+	struct Env *receiverEnv, *currentEnv;
+	int32_t error, leastPerm = (PTE_U | PTE_P);
+	// obtain current environment.
+	envid2env(0, &currentEnv, 0);
+	assert(currentEnv);
+	// Environment envid doesn't currently exist.
+	if((error = envid2env(envid, &receiverEnv, 0)) < 0)return error;
+	// Envid is not currently blocked in sys_ipc_recv or another enviironment managed to send first.
+	if(!receiverEnv->env_ipc_recving)return -E_IPC_NOT_RECV;
+	// Need to send page currently mapped at 'srcva'.
+	if((uintptr_t)srcva < UTOP){
+		struct PageInfo *pageInfo;
+		pte_t *pte;
+		// srcva is not page-aligned.
+		if(((uintptr_t)srcva & (PGSIZE - 1)))return -E_INVAL;
+		// Permissions deny.
+		if((int32_t)(leastPerm & perm) != leastPerm || (perm & (~PTE_SYSCALL)))return -E_INVAL;
+		// srcva is not mapped in the caller's address space.
+		if(!(pageInfo = page_lookup(currentEnv->env_pgdir, srcva, &pte)))return -E_INVAL;
+		// if(perm & PTE_W),but srcva is read-only in the current environment's address space.
+		if((perm & PTE_W) && !((*pte) & PTE_W))return -E_INVAL;
+		if((uintptr_t)receiverEnv->env_ipc_dstva < UTOP){
+			if((error = page_insert(receiverEnv->env_pgdir, pageInfo, receiverEnv->env_ipc_dstva, perm)) < 0)return error;
+		}
+	}
+	// restore status.
+	receiverEnv->env_ipc_recving = 0;
+	receiverEnv->env_ipc_value = value;
+	receiverEnv->env_ipc_from = currentEnv->env_id;
+	receiverEnv->env_ipc_perm = perm;
+	// Then we should mark the receiver environment as ENV_RUNNABLE.
+	receiverEnv->env_status = ENV_RUNNABLE;
+	// Return 0 from the paused sys_env_recv system call.
+	// Howerver,the corresponding sys_ipc_recv function will never return,so we need to modify receiver's environment's trapframe.
+	receiverEnv->env_tf.tf_regs.reg_eax = 0;
+	// sys_ipc_try_send could return 0.
+	return 0;
 }
 
 // Block until a value is ready.  Record that you want to receive
@@ -306,8 +341,16 @@ sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 static int
 sys_ipc_recv(void *dstva)
 {
-	// LAB 4: Your code here.
-	panic("sys_ipc_recv not implemented");
+	if((uintptr_t)dstva < UTOP && (uintptr_t)dstva & (PGSIZE - 1))return -E_INVAL;
+	// Willing wo receive a page of data.
+	struct Env *currentEnv;
+	envid2env(0, &currentEnv, 0);
+	assert(currentEnv);
+
+	currentEnv->env_status = ENV_NOT_RUNNABLE;
+	currentEnv->env_ipc_recving = 1;
+	currentEnv->env_ipc_dstva = dstva;
+	sys_yield();
 	return 0;
 }
 
@@ -317,24 +360,23 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 {
 	// Call the function corresponding to the 'syscallno' parameter.
 	// Return any appropriate return value.
-	// LAB 3: Your code here.
-
-	//panic("syscall not implemented");
 
 	switch (syscallno) {
-	case SYS_cputs:sys_cputs((char *)a1, (size_t)a2);return 0;
-	case SYS_cgetc:return sys_cgetc();
-	case SYS_getenvid:return (envid_t)sys_getenvid();
-	case SYS_env_destroy:return sys_env_destroy((envid_t)a1);
-	case SYS_yield:sys_yield();return 0;
-	case SYS_exofork:return sys_exofork();
-	case SYS_env_set_status:return sys_env_set_status((envid_t)a1, a2);
-	case SYS_page_alloc:return sys_page_alloc((envid_t)a1, (void *)a2, a3);
-	case SYS_page_map:return sys_page_map((envid_t)a1, (void *)a2, (envid_t)a3, (void *)a4, a5);
-	case SYS_page_unmap:return sys_page_unmap((envid_t)a1, (void *)a2);
-	case SYS_env_set_pgfault_upcall:return sys_env_set_pgfault_upcall((envid_t)a1, (void *)a2);
-	default:
-		return -E_INVAL;
+		case SYS_cputs:sys_cputs((char *)a1, (size_t)a2);return 0;
+		case SYS_cgetc:return sys_cgetc();
+		case SYS_getenvid:return (envid_t)sys_getenvid();
+		case SYS_env_destroy:return sys_env_destroy((envid_t)a1);
+		case SYS_yield:sys_yield();return 0;
+		case SYS_exofork:return sys_exofork();
+		case SYS_env_set_status:return sys_env_set_status((envid_t)a1, a2);
+		case SYS_page_alloc:return sys_page_alloc((envid_t)a1, (void *)a2, a3);
+		case SYS_page_map:return sys_page_map((envid_t)a1, (void *)a2, (envid_t)a3, (void *)a4, a5);
+		case SYS_page_unmap:return sys_page_unmap((envid_t)a1, (void *)a2);
+		case SYS_env_set_pgfault_upcall:return sys_env_set_pgfault_upcall((envid_t)a1, (void *)a2);
+		case SYS_ipc_try_send:return sys_ipc_try_send((envid_t)a1, (uint32_t)a2, (void *)a3, (unsigned)a4);
+		case SYS_ipc_recv:return sys_ipc_recv((void *)a1);
+		default:
+			return -E_INVAL;
 	}
 }
 
