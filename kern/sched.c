@@ -11,34 +11,22 @@ void sched_halt(void);
 void
 sched_yield(void)
 {
-	struct Env *idle;
-
-	// Implement simple round-robin scheduling.
-	//
-	// Search through 'envs' for an ENV_RUNNABLE environment in
-	// circular fashion starting just after the env this CPU was
-	// last running.  Switch to the first such environment found.
-	//
-	// If no envs are runnable, but the environment previously
-	// running on this CPU is still ENV_RUNNING, it's okay to
-	// choose that environment.
-	//
-	// Never choose an environment that's currently running on
-	// another CPU (env_status == ENV_RUNNING). If there are
-	// no runnable environments, simply drop through to the code
-	// below to halt the cpu.
 	uint32_t curenvIndex = (curenv?ENVX(curenv->env_id):0), offset; // curenv might be NULL!
+	struct Env *envCandidate = NULL;
 	for(offset = 0; offset < NENV; ++offset){
 		uint32_t realIndex = (curenvIndex + offset) % NENV;
-		if(envs[realIndex].env_status == ENV_RUNNABLE){
-			env_run(&envs[realIndex]); // switch to the first runnable environment.env_run will never return.
+		if(envs[realIndex].env_status == ENV_RUNNABLE && (!envCandidate || envs[realIndex].env_priority < envCandidate->env_priority)){
+			envCandidate = &envs[realIndex];
 		}
 	}
-
-	if(curenv && curenv->env_status == ENV_RUNNING){
-		// no envs are runnable,but the environment previously running on this CPU is still running.
-		// It's okay to choose this environment.
+	// switch to the greatest-priority runnable environment.
+	if(curenv && curenv->env_status == ENV_RUNNING && (!envCandidate || curenv->env_priority < envCandidate->env_priority)){
+		cprintf("envid@%04x with priority@%d will yield to envid@%04x with priority@%d\n", curenv->env_id, curenv->env_priority, curenv->env_id, curenv->env_priority);
 		env_run(curenv);
+	}
+	if(envCandidate){
+		cprintf("envid@%04x with priority@%d will yield to envid@%04x with priority@%d\n", curenv?curenv->env_id:-1, curenv?curenv->env_priority:-1, envCandidate->env_id, envCandidate->env_priority);
+		env_run(envCandidate);
 	}
 
 	// sched_halt never returns

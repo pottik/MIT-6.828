@@ -141,10 +141,99 @@ fork(void)
 	}
 }
 
+// Challenge-Implement priority scheduler-pfork(unsigned).
+int 
+pfork(unsigned priority)
+{
+	envid_t envid;
+	uintptr_t pageVa;
+	unsigned pn;
+	set_pgfault_handler(pgfault);
+	if((envid = sys_exofork()) > 0){
+		// parent environment.
+		// Copy parent address space.
+		for(pageVa = UTEXT; pageVa < USTACKTOP; pageVa += PGSIZE){
+			// check permissions.
+			pn = PGNUM(pageVa);
+			if((uvpd[PDX(pageVa)] & PTE_P) && (uvpt[pn] & PTE_P) && (uvpt[pn] & PTE_U)){
+				duppage(envid, pn);
+			}
+		}
+		// Allocate a new page for the child's user exception stack.
+		int32_t flag;
+		if((flag = sys_page_alloc(envid, (void *)(UXSTACKTOP - PGSIZE), (PTE_P | PTE_U | PTE_W))) < 0){
+			panic("sys_page_alloc:%e", flag);
+		}
+		// Copy parent page fault handler setup to the child.
+		extern void _pgfault_upcall(void);
+		if((flag = sys_env_set_pgfault_upcall(envid, _pgfault_upcall)) < 0){
+			panic("sys_set_pgfault_upcall:%e", flag);
+		}
+		// Now we can mark the child environment as runnable.
+		if((flag = sys_env_set_status(envid, ENV_RUNNABLE)) < 0){
+			panic("sys_env_set_status:%e", flag);
+		}
+		return envid;
+	}else if(envid == 0){
+		// Modify "thisenv" in child environment.
+		thisenv = &envs[ENVX(sys_getenvid())];
+		// set priority.
+		sys_env_set_priority(priority);
+		return 0;
+	}else{
+		// sys_exofork() fail.
+		panic("sys_exofork:%e", envid);
+	}
+}
+
 // Challenge!
 int
 sfork(void)
 {
-	panic("sfork not implemented");
+	envid_t envid;
+	uintptr_t pageVa;
+	unsigned pn;
+	int r;
+
+	set_pgfault_handler(pgfault);
+	if((envid = sys_exofork()) > 0){
+		// parent environment.
+		// Copy parent address space.
+		for(pageVa = UTEXT; pageVa < (USTACKTOP - PGSIZE); pageVa += PGSIZE){
+			// check permissions.
+			pn = PGNUM(pageVa);
+			if((uvpd[PDX(pageVa)] & PTE_P) && (uvpt[pn] & PTE_P) && (uvpt[pn] & PTE_U)){
+				// Unlike usual fork function,we just need to grant corresponding page permission PTE_W to implement
+				// shared memory between parent environment and child environment.
+				if((r = sys_page_map(0, (void *)pageVa, envid, (void *)pageVa, (PTE_W | PTE_U | PTE_P))) < 0){
+					panic("sys_page_map:%e", r);
+				}
+				if((r = sys_page_map(0, (void *)pageVa, 0, (void *)pageVa, (PTE_W | PTE_U | PTE_P))) < 0){
+					panic("sys_page_map:%e", r);
+				}
+			}
+		}
+		// Pages in the stack area should be treated in the usual copy-on-write manner.
+		duppage(envid, PGNUM(pageVa));
+		// Allocate a new page for the child's user exception stack.
+		if((r = sys_page_alloc(envid, (void *)(UXSTACKTOP - PGSIZE), (PTE_P | PTE_U | PTE_W))) < 0){
+			panic("sys_page_alloc:%e", r);
+		}
+		// Copy parent page fault handler setup to the child.
+		extern void _pgfault_upcall(void);
+		if((r = sys_env_set_pgfault_upcall(envid, _pgfault_upcall)) < 0){
+			panic("sys_set_pgfault_upcall:%e", r);
+		}
+		// Now we can mark the child environment as runnable.
+		if((r = sys_env_set_status(envid, ENV_RUNNABLE)) < 0){
+			panic("sys_env_set_status:%e", r);
+		}
+		return envid;
+	}else if(envid == 0){
+		// child environment.
+		thisenv=&envs[ENVX(sys_getenvid())];
+		// cprintf("thisenv@%p\n", thisenv);
+		return 0;
+	}
 	return -E_INVAL;
 }

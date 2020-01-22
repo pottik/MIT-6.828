@@ -75,7 +75,7 @@ trap_init(void)
 	 */
 	extern long entryPointOfTraps[][2];
 	int32_t i;
-	for(i = 0; i <= 40; ++i){
+	for(i = 0; i <= 26; ++i){
 		if(entryPointOfTraps[i][1] == T_BRKPT || entryPointOfTraps[i][1] == T_SYSCALL){
 			SETGATE(idt[entryPointOfTraps[i][1]], 0, GD_KT, entryPointOfTraps[i][0], 3);
 		}else SETGATE(idt[entryPointOfTraps[i][1]], 0, GD_KT, entryPointOfTraps[i][0], 0);
