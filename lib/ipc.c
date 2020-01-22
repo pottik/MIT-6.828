@@ -29,6 +29,9 @@ ipc_recv(envid_t *from_env_store, void *pg, int *perm_store)
 		if(perm_store)*perm_store = 0;
 		return error;
 	}
+
+	thisenv = &envs[ENVX(sys_getenvid())]; // for lab4's challenge sfork().
+
 	if(from_env_store)*from_env_store = thisenv->env_ipc_from;
 	if(perm_store)*perm_store = thisenv->env_ipc_perm;
 	return thisenv->env_ipc_value;
