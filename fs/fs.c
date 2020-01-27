@@ -66,11 +66,10 @@ alloc_block(void)
 	for(i = 0; i < super->s_nblocks; ++i){
 		if(block_is_free(i)){
 			bitmap[i / 32] &= ~(1 << (i % 32)); // mark this bit as zero which means in use.
-			flush_block(diskaddr(i));
 			return i;
 		}
 	}
-	
+
 	return -E_NO_DISK;
 }
 
@@ -157,6 +156,7 @@ file_block_walk(struct File *f, uint32_t filebno, uint32_t **ppdiskbno, bool all
 		f->f_indirect = blockno;
 		// claer the block we allocated above.
 		memset(diskaddr(f->f_indirect), 0, BLKSIZE);
+		flush_block(diskaddr(f->f_indirect));
 	}
 	// *ppdiskbno might be 0.
 	// There is a trick:f->f_indirect is an block number while f->direct is an virtual address.
@@ -178,7 +178,7 @@ file_get_block(struct File *f, uint32_t filebno, char **blk)
 {
 	int r;
 	uint32_t *ppdiskno;
-	
+
 	// value of r might be 0, -E_INVAL, -E_NO_DISK.
 	if((r = file_block_walk(f, filebno, &ppdiskno, 1)) < 0)return r;
 	// *ppdiskno is zero means that we should allocate a blobk.

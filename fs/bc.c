@@ -61,6 +61,11 @@ bc_pgfault(struct UTrapframe *utf)
 	if ((r = sys_page_map(0, addr, 0, addr, uvpt[PGNUM(addr)] & PTE_SYSCALL)) < 0)
 		panic("in bc_pgfault, sys_page_map: %e", r);
 
+	// debug
+	if(uvpt[PGNUM(addr)] & PTE_A){
+		cprintf("after block cache pgfault handler, corresponding page table entry was set.addr is %p and blockno is %d.\n", addr, blockno);
+	}
+
 	// Check that the block we read was allocated. (exercise for
 	// the reader: why do we do this *after* reading the block
 	// in?)
@@ -86,8 +91,16 @@ flush_block(void *addr)
 
 	// LAB 5: Your code here.
 	addr = (void *)ROUNDDOWN((uintptr_t)addr, PGSIZE);
+
+	// debug
+	cprintf("[BEFORE]flush block with addr %p and blockno %d, it\'s PTE_A is %d\n", addr, blockno, uvpt[PGNUM(addr)] & PTE_A);
+
 	// If the block isn't in the block cache,just not do anything.
 	if(!va_is_mapped(addr) || !va_is_dirty(addr))return;
+
+	// debug
+	cprintf("[AFTER]flush dirty block with addr %p and blockno %d, it\'s PTE_A is %d\n", addr, blockno, uvpt[PGNUM(addr)] & PTE_A);
+
 	// bit dirty was set,we should write it back to dist.
 	if((r = ide_write(blockno * BLKSECTS, addr, BLKSECTS)) < 0){
 		panic("ide_write:%e", r);
@@ -95,6 +108,47 @@ flush_block(void *addr)
 	// After we write back this dirty block to disk,we should clear the PTE_D bit.
 	if((r = sys_page_map(0, addr, 0, addr, uvpt[PGNUM(addr)] & PTE_SYSCALL)) < 0){
 		panic("int flush_block, sys_page_map:%e", r);
+	}
+}
+
+// lab 5's challenge : implement eviction policy for block cache.
+void
+evict_block_force(void *addr)
+{
+	uint32_t blockno = ((uint32_t)addr - DISKMAP) / BLKSIZE;
+	int r;
+
+	if(addr < (void *)DISKMAP || addr >= (void *)(DISKMAP + DISKSIZE)){
+		panic("evict_block_force of bad va %08x", addr);
+	}
+	// ignore boot sector,super block and bitmap block.
+	// if the block isn't in the block cache,just not do anything.
+	if(blockno <= 2 || !va_is_mapped(addr))return;
+	// flush this block if PTE_D flag was set before you evict this block to disk from memory.
+	if(uvpt[PGNUM(addr)] & PTE_D){
+		flush_block(addr);
+	}
+	// enture that addr was page-aligned,otherwise sys_page_unmap will return error -E_INVAL.
+	addr = (void *)ROUNDDOWN(addr, PGSIZE);
+	// evict this block to disk.
+	if((r = sys_page_unmap(0, addr)) < 0){
+		panic("evict_block_force:sys_page_unmap:%e", r);
+	}
+}
+
+// if only_not_accessed was true, this function will only evict those block
+// loaded into memory but has never been accessed.In contrast, it will evict
+// all block except for block number with 0,1,2.
+void
+block_evict_policy(bool only_not_accessed)
+{
+	uint32_t blockno, nblocks = DISKSIZE / BLKSIZE;
+	for(blockno = 3; blockno < nblocks; ++blockno){
+		if((!only_not_accessed) || (!(uvpt[PGNUM(diskaddr(blockno))] & PTE_A))){
+			evict_block_force(diskaddr(blockno));
+			if(!only_not_accessed)cprintf("[ALL BLOCKS EVICTION POLICY]block with blockno %d was evicted forcelly.\n");
+			else cprintf("[ONLY NOT ACCESSED EVICTION POLICY]block with block no %d was evicted.\n");
+		}
 	}
 }
 

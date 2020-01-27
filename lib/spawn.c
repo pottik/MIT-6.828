@@ -101,7 +101,7 @@ spawn(const char *prog, const char **argv)
 	// Create new child environment
 	if ((r = sys_exofork()) < 0)
 		return r;
-	child = r;
+	child = r; // Because we did not mark the child environment as ENV_RUNNABLE,child environment could not be scheduled at this point.
 
 	// Set up trap frame, including initial stack.
 	child_tf = envs[ENVX(child)].env_tf;
@@ -301,7 +301,17 @@ map_segment(envid_t child, uintptr_t va, size_t memsz,
 static int
 copy_shared_pages(envid_t child)
 {
-	// LAB 5: Your code here.
+	uintptr_t pageVa;
+	unsigned pn;
+	int r;
+	for(pageVa = 0; pageVa != UTOP; pageVa += PGSIZE){
+		pn = PGNUM(pageVa);
+		if((uvpd[PDX(pageVa)] & PTE_P) && (uvpt[pn] & PTE_P) && (uvpt[pn] & PTE_SHARE)){
+			if((r = sys_page_map(0, (void *)pageVa, child, (void *)pageVa, uvpt[pn] & PTE_SYSCALL)) < 0){
+				panic("copy_shared_pages:sys_page_map:%e", r);
+			}
+		}
+	}
 	return 0;
 }
 

@@ -27,6 +27,8 @@ bool	va_is_mapped(void *va);
 bool	va_is_dirty(void *va);
 void	flush_block(void *addr);
 void	bc_init(void);
+void	evict_block_force(void *addr); // lab 5's challenge.
+void	block_evict_policy(bool only_not_accessed); // lab 5's challenge.
 
 /* fs.c */
 void	fs_init(void);

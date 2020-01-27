@@ -33,7 +33,7 @@ pgfault(struct UTrapframe *utf)
 	//   You should make three system calls.
 
 	// LAB 4: Your code here.
-	if(!((err & FEC_WR) && (uvpt[PGNUM(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_COW))){
+	if(!((err & FEC_WR) && (uvpd[PDX(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_COW))){
 		panic("Permission denied!");
 	}
 	// if not align,sys_page_alloc will return error code.
@@ -71,11 +71,19 @@ duppage(envid_t envid, unsigned pn)
 	int r;
 
 	uintptr_t pn_va = pn * PGSIZE;
-	if((uvpt[pn] & PTE_W) || (uvpt[pn] & PTE_COW)){
+	if(uvpt[pn] & PTE_SHARE){
+		if((r = sys_page_map(0, (void *)pn_va, envid, (void *)pn_va, uvpt[pn] & PTE_SYSCALL)) < 0){
+			panic("sys_page_map:%e", r);
+		}
+	}else if((uvpt[pn] & PTE_W) || (uvpt[pn] & PTE_COW)){
 		if((r = sys_page_map(0, (void *)pn_va, envid, (void *)pn_va, (PTE_COW | PTE_P | PTE_U))) < 0){
 			panic("sys_page_map:%e", r);
 		}
 		if((r = sys_page_map(0, (void *)pn_va, 0, (void *)pn_va, (PTE_COW | PTE_P | PTE_U))) < 0){
+			panic("sys_page_map:%e", r);
+		}
+	}else{
+		if((r = sys_page_map(0, (void *)pn_va, envid, (void *)pn_va, PTE_P | PTE_U)) < 0){
 			panic("sys_page_map:%e", r);
 		}
 	}

@@ -237,13 +237,17 @@ serve_write(envid_t envid, struct Fsreq_write *req)
 	struct OpenFile *openFile;
 	int r, t = 0;
 	if((r = openfile_lookup(envid, req->req_fileid, &openFile)) < 0)return r;
-	while(1){
-		if((r = file_write(openFile->o_file, req->req_buf, req->req_n, openFile->o_fd->fd_offset)) < 0)return r;
-		t += r;
-		openFile->o_fd->fd_offset += r;
-		if(req->req_n <= t)break;
-	}
-	return t;
+	t = req->req_n > PGSIZE?PGSIZE:req->req_n;
+	if((r = file_write(openFile->o_file, req->req_buf, t, openFile->o_fd->fd_offset)) < 0)return r;
+	openFile->o_fd->fd_offset += r;
+	return r;
+	//while(1){
+		//if((r = file_write(openFile->o_file, req->req_buf, req->req_n, openFile->o_fd->fd_offset)) < 0)return r;
+		//t += r;
+		//openFile->o_fd->fd_offset += r;
+		//if(req->req_n <= t)break;
+	//}
+	//return t;
 }
 
 // Stat ipc->stat.req_fileid.  Return the file's struct Stat to the

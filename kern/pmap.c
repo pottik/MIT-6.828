@@ -705,7 +705,12 @@ user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 
 	for(; startVa < endVa; startVa += PGSIZE){
 		pageInfo = page_lookup(env->env_pgdir, (void *)startVa, &pte);
-		if(!pageInfo || startVa > (uintptr_t)ULIM || ((*pte) & permissions) != permissions){
+		//------------debug---------------
+		//if(!pageInfo)cprintf("user_mem_check error reason:!pageInfo\n");
+		//if(startVa > (uintptr_t)ULIM)cprintf("user_mem_check error reason:startVa > (uintptr_t)ULIM\n");
+		//if(((*pte) & permissions) != permissions)cprintf("user_mem_check error reason:((*pte) & permissions) != permissions,per is %p and actually %p was given.\n", permissions, *pte & permissions);
+		//------------debug---------------
+		if(!pageInfo || startVa >= (uintptr_t)ULIM || ((*pte) & permissions) != permissions){
 			// cprintf("startVa=>0x%08x vaFromPte=>0x%08x *pte=>0x%08x\n", startVa, KADDR(PTE_ADDR(*pte)), *pte);
 			// if there is an error,set the 'user_mem_check_addr' variable to the first erroneous virtual address.
 			// :( well,sorry I can't really understand the meaning of "first erroneous virtual address."

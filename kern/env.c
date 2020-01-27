@@ -361,7 +361,7 @@ load_icode(struct Env *e, uint8_t *binary)
 	lcr3(PADDR(e->env_pgdir)); // switch to this environment's address space.cr3 register must be physical address.
 	for(; ph < eph; ++ph){
 		if(ph->p_type == ELF_PROG_LOAD){
-			// assert(ph->p_filesz <= ph->p_memsz);
+			assert(ph->p_filesz <= ph->p_memsz);
 			region_alloc(e, (void *)ph->p_va, ph->p_memsz);
 			memset((void *)ph->p_va, 0, ph->p_memsz); // cleard to zero
 			memcpy((void *)ph->p_va, (void *)(binary + ph->p_offset), ph->p_filesz); // copy contents according to comments above.
@@ -394,11 +394,11 @@ env_create(uint8_t *binary, enum EnvType type)
 	if((flag = env_alloc(&env, (envid_t)0)) < 0){
 		panic("env_create:%e", flag);
 	}
+	env->env_type = type;
 	// If this is the file server (type == ENV_TYPE_FS) give it I/O privileges.
 	if(type == ENV_TYPE_FS){
-		env->env_tf.tf_eflags |= FL_IOPL_MASK;
+		env->env_tf.tf_eflags |= FL_IOPL_3;
 	}
-	env->env_type = type;
 	load_icode(env, binary); // restore this binary image to corresponding memory.
 }
 
