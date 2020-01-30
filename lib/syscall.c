@@ -117,3 +117,21 @@ sys_ipc_recv(void *dstva)
 	return syscall(SYS_ipc_recv, 1, (uint32_t)dstva, 0, 0, 0, 0);
 }
 
+int
+sys_exec_alloc_pgdir(void *va)
+{
+	return syscall(SYS_exec_alloc_pgdir, 0, (uint32_t)va, 0, 0, 0, 0);
+}
+
+int
+sys_exec_map(pde_t *pg_dir, void *srcva, void *dstva, int perm)
+{
+	return syscall(SYS_exec_map, 0, (uint32_t)pg_dir, (uint32_t)srcva, (uint32_t)dstva, (uint32_t)perm, 0);
+}
+
+int
+sys_exec_replace_pgdir(pde_t *pg_dir, uintptr_t esp, uintptr_t e_entry)
+{
+	return syscall(SYS_exec_replace_pgdir, 0, (uint32_t)pg_dir, esp, e_entry, 0, 0);
+}
+

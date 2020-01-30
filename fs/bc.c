@@ -93,13 +93,13 @@ flush_block(void *addr)
 	addr = (void *)ROUNDDOWN((uintptr_t)addr, PGSIZE);
 
 	// debug
-	cprintf("[BEFORE]flush block with addr %p and blockno %d, it\'s PTE_A is %d\n", addr, blockno, uvpt[PGNUM(addr)] & PTE_A);
+	//cprintf("[BEFORE]flush block with addr %p and blockno %d, it\'s PTE_A is %d\n", addr, blockno, uvpt[PGNUM(addr)] & PTE_A);
 
 	// If the block isn't in the block cache,just not do anything.
 	if(!va_is_mapped(addr) || !va_is_dirty(addr))return;
 
 	// debug
-	cprintf("[AFTER]flush dirty block with addr %p and blockno %d, it\'s PTE_A is %d\n", addr, blockno, uvpt[PGNUM(addr)] & PTE_A);
+	//cprintf("[AFTER]flush dirty block with addr %p and blockno %d, it\'s PTE_A is %d\n", addr, blockno, uvpt[PGNUM(addr)] & PTE_A);
 
 	// bit dirty was set,we should write it back to dist.
 	if((r = ide_write(blockno * BLKSECTS, addr, BLKSECTS)) < 0){

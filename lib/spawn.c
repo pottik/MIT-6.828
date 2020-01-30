@@ -3,7 +3,8 @@
 
 #define UTEMP2USTACK(addr)	((void*) (addr) + (USTACKTOP - PGSIZE) - UTEMP)
 #define UTEMP2			(UTEMP + PGSIZE)
-#define UTEMP3			(UTEMP2 + PGSIZE)
+#define UTEMP3			0x0
+//(UTEMP2 + PGSIZE)
 
 // Helper functions for spawn.
 static int init_stack(envid_t child, const char **argv, uintptr_t *init_esp);
@@ -175,6 +176,93 @@ spawnl(const char *prog, const char *arg0, ...)
 	return spawn(prog, argv);
 }
 
+int
+exec(const char *prog, const char **argv)
+{
+	unsigned char elf_buf[512];
+	int fd, i, r, perm;
+	struct Elf *elf;
+	struct Proghdr *ph;
+	uintptr_t esp;
+	
+	if((r = open(prog, O_RDONLY)) < 0)
+		return r;
+	fd = r;
+
+	// Read elf header.
+	elf = (struct Elf *)elf_buf;
+	if(readn(fd, elf_buf, sizeof(elf_buf)) != sizeof(elf_buf) || elf->e_magic != ELF_MAGIC){
+		close(fd);
+		cprintf("elf magic %08x want %08x\n", elf->e_magic, ELF_MAGIC);
+		return -E_NOT_EXEC;
+	}
+
+	// allocate a new page as page directory
+	if((r = sys_exec_alloc_pgdir((void *)UTEMP3)) < 0){
+		panic("[DEBUG]exec:sys_exec_alloc_pgdir:%e",r);
+	}
+	// cprintf("[DEBUG]finish allocate new page directory.\n");
+
+	// Set up program segments as defined in ELF header.
+	ph = (struct Proghdr *)(elf_buf + elf->e_phoff);
+	for(i = 0; i < elf->e_phnum; ++i, ++ph){
+		if(ph->p_type != ELF_PROG_LOAD)
+			continue;
+		perm = PTE_P | PTE_U;
+		if(ph->p_flags & ELF_PROG_FLAG_WRITE)
+			perm |= PTE_W;
+		if((r = map_segment(-1, ph->p_va, ph->p_memsz, fd, ph->p_filesz, ph->p_offset, perm)) < 0)
+			goto error;
+	}
+	close(fd);
+	fd = -1;
+	// cprintf("[DEBUG]finish map_segment.\n");
+
+	// initial normal stack.
+	if((r = init_stack(-1, argv, &esp)) < 0){
+		cprintf("[DEBUG]exec:init_stack:%e\n", r);
+		goto error;
+	}
+	// cprintf("[DEBUG]finsih init_stack function.\n");
+	if((r = sys_exec_replace_pgdir((pde_t *)UTEMP3, esp, elf->e_entry)) < 0){
+		cprintf("[DEBUG]exec:sys_exec_replace_pgdir failed for reason %e\n", r);
+		goto error;
+	}
+	return 0;
+error:
+	sys_env_destroy(0);
+	close(fd);
+	return r;
+}
+
+int
+execl(const char *prog, const char *arg0, ...)
+{
+	// We calculate argc by advancing the args until we hit NULL.
+	// The contract of the function guarantees that the last
+	// argument will always be NULL, and that none of the other
+	// arguments will be NULL.
+	int argc=0;
+	va_list vl;
+	va_start(vl, arg0);
+	while(va_arg(vl, void *) != NULL)
+		argc++;
+	va_end(vl);
+
+	// Now that we have the size of the args, do a second pass
+	// and store the values in a VLA, which has the format of argv
+	const char *argv[argc+2];
+	argv[0] = arg0;
+	argv[argc+1] = NULL;
+
+	va_start(vl, arg0);
+	unsigned i;
+	for(i=0;i<argc;i++)
+		argv[i+1] = va_arg(vl, const char *);
+	va_end(vl);
+	return exec(prog, argv);
+}
+
 
 // Set up the initial stack page for the new child process with envid 'child'
 // using the arguments array pointed to by 'argv',
@@ -245,14 +333,17 @@ init_stack(envid_t child, const char **argv, uintptr_t *init_esp)
 	argv_store[-2] = argc;
 
 	*init_esp = UTEMP2USTACK(&argv_store[-2]);
-
 	// After completing the stack, map it into the child's address space
 	// and unmap it from ours!
-	if ((r = sys_page_map(0, UTEMP, child, (void*) (USTACKTOP - PGSIZE), PTE_P | PTE_U | PTE_W)) < 0)
-		goto error;
+	if(child >= 0){
+		if ((r = sys_page_map(0, UTEMP, child, (void*) (USTACKTOP - PGSIZE), PTE_P | PTE_U | PTE_W)) < 0)
+			goto error;
+	}else{
+		if((r = sys_exec_map((pde_t *)UTEMP3, (void *)UTEMP, (void *)(USTACKTOP - PGSIZE), PTE_P | PTE_U | PTE_W)) < 0)
+			goto error;
+	}
 	if ((r = sys_page_unmap(0, UTEMP)) < 0)
 		goto error;
-
 	return 0;
 
 error:
@@ -279,7 +370,13 @@ map_segment(envid_t child, uintptr_t va, size_t memsz,
 	for (i = 0; i < memsz; i += PGSIZE) {
 		if (i >= filesz) {
 			// allocate a blank page
-			if ((r = sys_page_alloc(child, (void*) (va + i), perm)) < 0)
+			if(child < 0){
+				if((r = sys_page_alloc(0, (void *)UTEMP, perm)) < 0)
+					return r;
+				if((r = sys_exec_map((pde_t *)UTEMP3, (void *)UTEMP, (void *)(va + i), perm)) < 0)
+					panic("map_segment:sys_exec_map:%e", r);
+				sys_page_unmap(0, UTEMP);
+			}else if ((r = sys_page_alloc(child, (void*) (va + i), perm)) < 0)
 				return r;
 		} else {
 			// from file
@@ -289,7 +386,10 @@ map_segment(envid_t child, uintptr_t va, size_t memsz,
 				return r;
 			if ((r = readn(fd, UTEMP, MIN(PGSIZE, filesz-i))) < 0)
 				return r;
-			if ((r = sys_page_map(0, UTEMP, child, (void*) (va + i), perm)) < 0)
+			if(child < 0){
+				if((r = sys_exec_map((pde_t *)UTEMP3, (void *)UTEMP, (void*)(va + i), perm)) < 0)
+					panic("exec: sys_exec_map: %e", r);
+			}else if ((r = sys_page_map(0, UTEMP, child, (void*) (va + i), perm)) < 0)
 				panic("spawn: sys_page_map data: %e", r);
 			sys_page_unmap(0, UTEMP);
 		}

@@ -357,7 +357,6 @@ load_icode(struct Env *e, uint8_t *binary)
 
 	ph = (struct Proghdr *)(binary + elfHeader->e_phoff);
 	eph = ph + elfHeader->e_phnum;
-	
 	lcr3(PADDR(e->env_pgdir)); // switch to this environment's address space.cr3 register must be physical address.
 	for(; ph < eph; ++ph){
 		if(ph->p_type == ELF_PROG_LOAD){

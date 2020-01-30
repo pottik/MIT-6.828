@@ -17,6 +17,9 @@ enum {
 	SYS_yield,
 	SYS_ipc_try_send,
 	SYS_ipc_recv,
+	SYS_exec_alloc_pgdir,
+	SYS_exec_map,
+	SYS_exec_replace_pgdir,
 	NSYSCALLS
 };
 

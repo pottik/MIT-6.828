@@ -379,6 +379,134 @@ sys_ipc_recv(void *dstva)
 	return 0;
 }
 
+// allocate a new page as this environmnt's page directory and map
+// it to va temporarily.
+static int
+sys_exec_alloc_pgdir(void *va)
+{
+	struct Env *currentEnv;
+	struct PageInfo *pageInfo = NULL;
+	pde_t *new_pgdir;
+
+	envid2env(0, &currentEnv, 1);
+	assert(currentEnv);
+	// step 1) we should check that whether the page correspondingly to pgdir_temp
+	//         is present or not.At the same time,we have to ensure that the virtual
+	//         address va is page-aligned.
+	if(((uintptr_t)va & (PGSIZE - 1)) || page_lookup(currentEnv->env_pgdir, va, NULL)){
+		cprintf("[DEBUG]sys_exec_alloc_pgdir:va is now mapped or va was not page aligned.\n");
+		return -E_INVAL;
+	}
+	// step 2) allocate a new page as this environment's page directory.
+	if(!(pageInfo = page_alloc(ALLOC_ZERO))){
+		return -E_NO_MEM;
+	}
+	// step 3) map the new page to va temporarily.
+	if(page_insert(currentEnv->env_pgdir, pageInfo, va, (PTE_W | PTE_P | PTE_U)) < 0){
+		return -E_NO_MEM;
+	}
+	// step 4) copy this environment's old pgdir here just like what we have done before.
+	//         Don't forget to increment its ref counter.
+	//         Most importantly,it's necessary switch page directory for that we are now
+	//         in kernel mode.
+	//cprintf("[INFO]Before cr3 is %p.\n", rcr3());
+	lcr3(PADDR(currentEnv->env_pgdir));
+	//cprintf("[INFO]After cr3 is %p.\n", rcr3());
+	memcpy(va, kern_pgdir, PGSIZE);
+	++pageInfo->pp_ref;
+	//lcr3(PADDR(kern_pgdir));
+	//cprintf("[INFO]Finally cr3 is %p.\n", rcr3());
+	return 0;
+}
+
+// lab 5's challenge - implement Unix-Like exec.
+static int
+sys_exec_map(pde_t *pg_dir, void *srcva, void *dstva, int perm)
+{
+	struct PageInfo *pageInfo = NULL;
+	struct Env *currentEnv;
+	int32_t leastPerm = (PTE_U | PTE_P);
+	envid2env(0, &currentEnv, 1);
+	assert(currentEnv);
+
+	// step 0)
+	if((uintptr_t)srcva >= UTOP || (uintptr_t)dstva >= UTOP || ((uintptr_t)srcva & (PGSIZE - 1)) || ((uintptr_t)dstva & (PGSIZE - 1))){
+		cprintf("[DEBUG]sys_exec_map:step 0 failed.\n");
+		return -E_INVAL;
+	}
+
+	// step 1) check pg_dir present.
+	if(!page_lookup(currentEnv->env_pgdir, pg_dir, NULL)){
+		cprintf("[DEBUG]sys_exec_map:pg_dir not present.\n");
+		return -E_INVAL;
+	}
+	// step 2) check source page present.
+	if(!( pageInfo = page_lookup(currentEnv->env_pgdir, srcva, NULL))){
+		cprintf("[DEBUG]sys_exec_map:step 2 failed.\n");
+		return -E_INVAL;
+	}
+	// step 3)
+	if((perm & leastPerm) != leastPerm || (perm & (~PTE_SYSCALL))){
+		cprintf("[DEBUG]sys_exec_map:step 3 failed,permisson denied.\n");
+		return -E_INVAL;
+	}
+	// step 4) map pageInfo to dstva.
+	// cprintf("[DEBUG]pg_dir is %p and dstva is %p\n", pg_dir, dstva);
+	return page_insert(pg_dir, pageInfo, dstva, perm);
+}
+
+// lab 5's challenge - implement Unix-Like exec.
+static int
+sys_exec_replace_pgdir(pde_t *pg_dir, uintptr_t esp, uintptr_t e_entry)
+{
+	struct PageInfo *pageInfo = NULL;
+	struct Env *currentEnv = NULL;
+	pde_t *old_pgdir;
+	pte_t *pt;
+	uint32_t pdeno, pteno;
+	physaddr_t pa;
+
+	envid2env(0, &currentEnv, 1);
+	assert(currentEnv);
+	if(!(pageInfo = page_lookup(currentEnv->env_pgdir, (void *)pg_dir, NULL))){
+		cprintf("[DEBUG]sys_exec_replace_pgdir:page_lookup:pageInfo is null.\n");
+		return -E_INVAL;
+	}
+	// save the old page directory.
+	old_pgdir = currentEnv->env_pgdir;
+	currentEnv->env_pgdir = (pde_t *)page2kva(pageInfo);
+	// UVPT maps the env's own page table read-only.
+	currentEnv->env_pgdir[PDX(UVPT)] = PADDR(currentEnv->env_pgdir) | PTE_P | PTE_U;
+
+	// we have replaced page directory.However,we didn't free old page directory and page table,
+	// that's what we are going to do next.
+	for(pdeno = 0; pdeno < PDX(UTOP); ++pdeno){
+		if(!(old_pgdir[pdeno] & PTE_P))
+			continue;
+		// find the pa and va of the page table.
+		pa = PTE_ADDR(old_pgdir[pdeno]);
+		pt = (pte_t *)KADDR(pa);
+		// unmap all PTEs in this page table.
+		for(pteno = 0; pteno <= PTX(~0); ++pteno){
+			if(pt[pteno] & PTE_P)
+				page_remove(old_pgdir, PGADDR(pdeno, pteno, 0));
+		}
+		// free the page table itself.
+		old_pgdir[pdeno] = 0;
+		page_decref(pa2page(pa));
+	}
+	// free the page directory.
+	pa = PADDR(old_pgdir);
+	old_pgdir = 0;
+	page_decref(pa2page(pa));
+
+	// modify some status of this environment.
+	currentEnv->env_tf.tf_esp = esp;
+	currentEnv->env_tf.tf_eip = e_entry;
+	env_run(currentEnv);
+	return 0; // never get here,just eliminate compiling error.
+}
+
 // Dispatches to the correct kernel function, passing the arguments.
 int32_t
 syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5)
@@ -401,6 +529,9 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 		case SYS_ipc_try_send:return sys_ipc_try_send((envid_t)a1, (uint32_t)a2, (void *)a3, (unsigned)a4);
 		case SYS_ipc_recv:return sys_ipc_recv((void *)a1);
 		case SYS_env_set_trapframe:return sys_env_set_trapframe((envid_t)a1, (struct Trapframe *)a2);
+		case SYS_exec_alloc_pgdir:return sys_exec_alloc_pgdir((void *)a1);
+		case SYS_exec_map:return sys_exec_map((pde_t *)a1, (void *)a2, (void *)a3, a4);
+		case SYS_exec_replace_pgdir:return sys_exec_replace_pgdir((pde_t *)a1, (uintptr_t)a2, (uintptr_t)a3);
 		default:
 			return -E_INVAL;
 	}
